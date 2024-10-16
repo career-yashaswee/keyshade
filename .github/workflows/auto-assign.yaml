@@ -16,6 +16,7 @@ jobs:
             const issue = context.issue;
             const owner = "keyshade-xyz";
             const repo = "keyshade";
+            const username = comment.user.login;
 
             async function updateProjectStatus(issueNumber) {
               const projectsResponse = await github.rest.projects.listForRepo({
@@ -50,29 +51,50 @@ jobs:
               }
             }
 
+            async function userHasOpenIssues() {
+              const issuesResponse = await github.rest.issues.listForRepo({
+                owner,
+                repo,
+                assignee: username,
+                state: 'open',
+              });
+              return issuesResponse.data.length > 0;
+            }
+
             if (comment.body.startsWith('/attempt')) {
               if (!issue.assignee) {
-                await github.rest.issues.addAssignees({
-                  owner,
-                  repo,
-                  issue_number: issue.number,
-                  assignees: [comment.user.login],
-                });
+                const hasOpenIssues = await userHasOpenIssues();
 
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: issue.number,
-                  body: `Assigned the issue to @${comment.user.login}!`,
-                });
+                if (hasOpenIssues) {
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: issue.number,
+                    body: `You already have an open issue assigned to you. Please complete or unassign the issue before attempting another one.`,
+                  });
+                } else {
+                  await github.rest.issues.addAssignees({
+                    owner,
+                    repo,
+                    issue_number: issue.number,
+                    assignees: [username],
+                  });
 
-                await updateProjectStatus(issue.number);
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: issue.number,
+                    body: `Assigned to @${username}. Please open a draft PR linking this issue within 48h ⚠️ If we can't detect a PR from you linking this issue in 48h, you'll be unassigned automatically. Excited to have you ship this 🚀`,
+                  });
+
+                  await updateProjectStatus(issue.number);
+                }
               } else {
                 await github.rest.issues.createComment({
                   owner,
                   repo,
                   issue_number: issue.number,
-                  body: 'This issue is already assigned. Tag a maintainer if you need to take over.',
+                  body: `This issue is already assigned to another person. Please find more issues [here](https://github.com/${owner}/${repo}/issues).`,
                 });
               }
             }
